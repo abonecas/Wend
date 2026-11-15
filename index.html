@@ -3,11 +3,8 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-  <title>Word Path Puzzle</title>
+  <title>Trilha de Palavras</title>
   <script src="https://cdn.tailwindcss.com"></script>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@600;700;800;900&display=swap" rel="stylesheet">
   <style>
     * {
       box-sizing: border-box;
@@ -17,7 +14,7 @@
     }
 
     body {
-      font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
       background-color: #f6f4ef;
       color: #1f2328;
       margin: 0;
@@ -44,6 +41,7 @@
       aspect-ratio: 7 / 8;
     }
 
+    /* Layer 1: Background cells, obstacle blocks, and region borders */
     .grid-cells {
       display: grid;
       grid-template-columns: repeat(7, minmax(0, 1fr));
@@ -73,19 +71,28 @@
       border-bottom: none;
     }
 
-    /* Blocked grey obstacle squares */
+    /* Grey obstacle squares with dark borders */
     .cell.obstacle {
       background-color: #b0b2b5;
       cursor: default;
       z-index: 4;
     }
 
-    /* Locked completed word cell background tint & region walls */
     .cell.locked {
       cursor: not-allowed;
     }
 
-    /* Dedicated top letter & badge overlay layer so letters NEVER get covered by SVG paths */
+    /* Layer 5: SVG path capsules, chevrons, start rings, and checkmark badges */
+    .path-svg {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      z-index: 5;
+      pointer-events: none;
+    }
+
+    /* Layer 10: Dedicated top letter overlay so letters NEVER get covered */
     .letters-overlay {
       position: absolute;
       inset: 0;
@@ -110,10 +117,11 @@
       position: relative;
       z-index: 12;
       font-weight: 800;
+      font-size: clamp(1.05rem, 4.5vw, 1.35rem);
       color: #18181b;
       pointer-events: none;
       line-height: 1;
-      transition: transform 0.12s ease, color 0.15s ease;
+      transition: transform 0.12s ease;
     }
 
     .letter-slot.active-tip .cell-letter {
@@ -135,16 +143,6 @@
     @keyframes pulseHint {
       0%, 100% { transform: scale(0.92); opacity: 0.9; }
       50% { transform: scale(1.08); opacity: 0.4; }
-    }
-
-    /* SVG overlay sits ABOVE grid background tints (z-index: 1) and BELOW letters-overlay (z-index: 10) */
-    .path-svg {
-      position: absolute;
-      inset: 0;
-      width: 100%;
-      height: 100%;
-      z-index: 5;
-      pointer-events: none;
     }
 
     /* Toast / Sign notification */
@@ -170,8 +168,8 @@
 </head>
 <body class="py-4 px-3 sm:py-6">
 
-  <!-- Header -->
-  <header class="w-full max-w-md flex items-center justify-between mb-3 px-1">
+  <!-- Top Header -->
+  <header class="w-full max-w-[392px] flex items-center justify-between mb-3 px-0.5">
     <div>
       <div class="flex items-center gap-2">
         <span class="inline-block w-3 h-3 rounded-full bg-emerald-600"></span>
@@ -179,57 +177,57 @@
       </div>
       <p class="text-xs text-zinc-500 font-medium">Conecte todas as letras para formar as 7 palavras</p>
     </div>
-    <div class="flex items-center gap-1.5 bg-white border border-zinc-200 px-3 py-1.5 rounded-full shadow-sm">
+    <div class="flex items-center gap-1.5 bg-white border border-zinc-200 px-3 py-1.5 rounded-full shadow-sm shrink-0">
       <span class="text-xs font-bold text-zinc-500">Encontradas:</span>
       <span id="progress-counter" class="text-sm font-black text-emerald-600">0 / 7</span>
     </div>
   </header>
 
-  <!-- Confirmation Sign Banner (appears when a correct word is connected or invalid attempt made) -->
-  <div class="w-full max-w-md min-h-[44px] mb-2.5 flex items-center justify-center">
-    <div id="status-sign" class="hidden w-full px-4 py-2 rounded-xl border shadow-sm flex items-center justify-between gap-2 transition-all">
-      <div class="flex items-center gap-2.5">
-        <span id="sign-icon" class="w-6 h-6 rounded-full flex items-center justify-center text-xs font-black shrink-0"></span>
-        <span id="sign-text" class="text-xs sm:text-sm font-extrabold tracking-wide"></span>
+  <!-- Confirmation Sign Banner & Live Preview -->
+  <div class="w-full max-w-[392px] min-h-[44px] mb-2.5 flex items-center justify-center">
+    <div id="status-sign" class="hidden w-full px-3.5 py-2 rounded-xl border-2 shadow-sm flex items-center justify-between gap-2 transition-all">
+      <div class="flex items-center gap-2.5 min-w-0">
+        <span id="sign-icon" class="w-6 h-6 rounded-full flex items-center justify-center text-xs font-black shrink-0 text-white"></span>
+        <span id="sign-text" class="text-xs sm:text-sm font-extrabold tracking-wide truncate text-zinc-900"></span>
       </div>
-      <span id="sign-badge" class="text-[11px] font-bold uppercase px-2 py-0.5 rounded-md"></span>
+      <span id="sign-badge" class="text-[10px] font-black uppercase px-2 py-0.5 rounded-md shrink-0"></span>
     </div>
     <div id="live-word-preview" class="text-xs font-bold text-zinc-500 tracking-widest uppercase h-6 flex items-center">
       Arraste ou clique nas letras adjacentes
     </div>
   </div>
 
-  <!-- Main Game Grid (8 rows x 7 columns = 56 cells, 6 obstacles = 50 letter cells) -->
-  <main class="w-full max-w-md flex flex-col items-center">
+  <!-- Main 8x7 Game Grid -->
+  <main class="w-full max-w-[392px] flex flex-col items-center">
     <div id="board-wrapper" class="board-wrapper">
       <div id="grid-cells" class="grid-cells"></div>
       <svg id="path-svg" class="path-svg" viewBox="0 0 700 800" preserveAspectRatio="none"></svg>
       <div id="letters-overlay" class="letters-overlay"></div>
     </div>
 
-    <!-- Progressive Word Bank Slots (sorted by word length just like the screenshots) -->
-    <section class="w-full max-w-[392px] mt-3.5 bg-white border border-zinc-200/90 rounded-xl p-3 shadow-sm">
+    <!-- Staircase Word Bank Slots (Sorted by word length: 5, 5, 6, 6, 7, 9, 12) -->
+    <section class="w-full mt-3.5 bg-white border border-zinc-200/90 rounded-xl p-3 shadow-sm">
       <div id="word-slots-container" class="flex flex-col gap-1.5"></div>
     </section>
 
     <!-- Action Controls -->
-    <div class="w-full max-w-[392px] mt-3 grid grid-cols-3 gap-2">
+    <div class="w-full mt-3 grid grid-cols-3 gap-2">
       <button id="btn-clear" type="button"
-        class="py-2.5 px-3 bg-white hover:bg-zinc-50 active:scale-[0.98] text-zinc-700 font-bold text-xs rounded-xl border border-zinc-300 shadow-sm transition">
+        class="py-2.5 px-3 bg-white hover:bg-zinc-50 active:scale-[0.98] text-zinc-700 font-bold text-xs rounded-xl border border-zinc-300 shadow-sm transition cursor-pointer">
         Limpar Traço
       </button>
       <button id="btn-hint" type="button"
-        class="py-2.5 px-3 bg-amber-50 hover:bg-amber-100 active:scale-[0.98] text-amber-800 font-bold text-xs rounded-xl border border-amber-300 shadow-sm transition">
+        class="py-2.5 px-3 bg-amber-50 hover:bg-amber-100 active:scale-[0.98] text-amber-800 font-bold text-xs rounded-xl border border-amber-300 shadow-sm transition cursor-pointer">
         Dica (<span id="hint-count">3</span>)
       </button>
       <button id="btn-reset" type="button"
-        class="py-2.5 px-3 bg-zinc-800 hover:bg-zinc-900 active:scale-[0.98] text-white font-bold text-xs rounded-xl shadow-sm transition">
+        class="py-2.5 px-3 bg-zinc-800 hover:bg-zinc-900 active:scale-[0.98] text-white font-bold text-xs rounded-xl shadow-sm transition cursor-pointer">
         Reiniciar
       </button>
     </div>
   </main>
 
-  <!-- Victory Modal -->
+  <!-- Victory Completion Modal -->
   <div id="victory-modal" class="hidden fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4">
     <div class="bg-white rounded-2xl border-2 border-zinc-800 max-w-sm w-full p-6 text-center shadow-2xl sign-banner">
       <div class="w-14 h-14 mx-auto mb-3 rounded-full bg-emerald-100 border-2 border-emerald-600 flex items-center justify-center text-emerald-600">
@@ -238,102 +236,108 @@
         </svg>
       </div>
       <h2 class="text-2xl font-black text-zinc-900 mb-1">Parabéns!</h2>
-      <p class="text-sm text-zinc-600 font-medium mb-4">
-        Você completou e bloqueou todas as <span class="font-bold text-zinc-900">7 palavras</span> do tabuleiro!
+      <p class="text-sm font-bold text-emerald-700 mb-1">Jogo concluído com sucesso!</p>
+      <p class="text-xs text-zinc-600 font-medium mb-4">
+        Todas as <span class="font-bold text-zinc-900">7 palavras</span> foram encontradas e bloqueadas no tabuleiro:
       </p>
       <div id="victory-words-list" class="flex flex-wrap justify-center gap-1.5 mb-5"></div>
-      <button id="btn-play-again" type="button"
-        class="w-full py-3 bg-emerald-600 hover:bg-emerald-700 active:scale-[0.99] text-white font-extrabold text-sm rounded-xl shadow-md transition">
-        Jogar Novamente
-      </button>
+      <div class="flex flex-col gap-2">
+        <button id="btn-view-board" type="button"
+          class="w-full py-2.5 bg-zinc-100 hover:bg-zinc-200 active:scale-[0.99] text-zinc-800 font-bold text-xs rounded-xl border border-zinc-300 transition cursor-pointer">
+          Ver Tabuleiro Completo
+        </button>
+        <button id="btn-play-again" type="button"
+          class="w-full py-3 bg-emerald-600 hover:bg-emerald-700 active:scale-[0.99] text-white font-extrabold text-sm rounded-xl shadow-md transition cursor-pointer">
+          Jogar Novamente
+        </button>
+      </div>
     </div>
   </div>
 
   <script>
     /**
-     * Puzzle Definition:
-     * Grid: 8 rows x 7 columns = 56 cells
-     * Obstacles (grey): 6 cells -> (0,0), (0,6), (3,3), (6,0), (7,0), (7,6)
-     * Playable cells: 50 cells = exact sum of all 7 Portuguese target words!
+     * Exact 8x7 Grid Configuration:
+     * '#' represents blocked grey obstacle cells at:
+     * (0,0), (0,6), (3,3), (6,0), (7,0), (7,6)
      */
     const ROWS = 8;
     const COLS = 7;
 
-    const OBSTACLES = new Set([
-      "0,0", "0,6",
-      "3,3",
-      "6,0",
-      "7,0", "7,6"
-    ]);
+    const BOARD_LAYOUT = [
+      ["#", "A", "R", "O", "M", "A", "#"],
+      ["R", "E", "S", "T", "I", "L", "O"],
+      ["O", "B", "L", "G", "I", "N", "A"],
+      ["S", "C", "O", "#", "O", "I", "S"],
+      ["A", "O", "R", "C", "D", "U", "M"],
+      ["S", "S", "I", "A", "I", "L", "P"],
+      ["#", "V", "I", "T", "N", "G", "S"],
+      ["#", "I", "D", "A", "D", "E", "#"]
+    ];
 
-    // Target words ordered by length (for the bottom staircase display)
-    // Each word includes its canonical verified orthogonal path
+    /**
+     * All 7 Portuguese target words sorted by length (5, 5, 6, 6, 7, 9, 12)
+     */
     const PUZZLE_WORDS = [
       {
         word: "AROMA",
-        path: [[0,1],[0,2],[0,3],[0,4],[0,5]]
+        path: [[0,1], [0,2], [0,3], [0,4], [0,5]]
       },
       {
         word: "ROSAS",
-        path: [[1,0],[2,0],[3,0],[4,0],[5,0]]
+        path: [[1,0], [2,0], [3,0], [4,0], [5,0]]
       },
       {
         word: "ESTILO",
-        path: [[1,1],[1,2],[1,3],[1,4],[1,5],[1,6]]
+        path: [[1,1], [1,2], [1,3], [1,4], [1,5], [1,6]]
       },
       {
         word: "BLOCOS",
-        path: [[2,1],[2,2],[3,2],[3,1],[4,1],[5,1]]
+        path: [[2,1], [2,2], [3,2], [3,1], [4,1], [5,1]]
       },
       {
         word: "GINASIO",
-        path: [[2,3],[2,4],[2,5],[2,6],[3,6],[3,5],[3,4]]
+        path: [[2,3], [2,4], [2,5], [2,6], [3,6], [3,5], [3,4]]
       },
       {
         word: "DUMPLINGS",
-        path: [[4,4],[4,5],[4,6],[5,6],[5,5],[5,4],[6,4],[6,5],[6,6]]
+        path: [[4,4], [4,5], [4,6], [5,6], [5,5], [5,4], [6,4], [6,5], [6,6]]
       },
       {
         word: "CRIATIVIDADE",
-        path: [[4,3],[4,2],[5,2],[5,3],[6,3],[6,2],[6,1],[7,1],[7,2],[7,3],[7,4],[7,5]]
+        path: [[4,3], [4,2], [5,2], [5,3], [6,3], [6,2], [6,1], [7,1], [7,2], [7,3], [7,4], [7,5]]
       }
     ];
 
-    // Pool of 7 distinct vibrant colors (one per word) with matching light tint backgrounds and dark border tones
-    const COLOR_POOL = [
-      { id: "coral",   color: "#EF4433", tint: "#FEE2E2", border: "#B91C1C" }, // Coral Red
-      { id: "magenta", color: "#E0288D", tint: "#FCE7F3", border: "#9D174D" }, // Magenta Pink
-      { id: "amber",   color: "#EAB308", tint: "#FEF9C3", border: "#A16207" }, // Amber Gold
-      { id: "emerald", color: "#00A86B", tint: "#D1FAE5", border: "#065F46" }, // Emerald Green
-      { id: "sky",     color: "#0284C7", tint: "#E0F2FE", border: "#075985" }, // Sky Blue
-      { id: "indigo",  color: "#6366F1", tint: "#E0E7FF", border: "#3730A3" }, // Indigo Violet
-      { id: "lime",    color: "#84CC16", tint: "#ECFCCB", border: "#3F6212" }  // Lime Olive
+    /**
+     * Pool of 7 distinct vibrant colors with matching light region tints & dark borders.
+     * Once a word is solved and locked, its color is permanently removed from the active pool.
+     */
+    const COLOR_PALETTE = [
+      { id: "red",     main: "#ef4444", tint: "#fee2e2", border: "#991b1b" },
+      { id: "pink",    main: "#ec4899", tint: "#fce7f3", border: "#9d174d" },
+      { id: "blue",    main: "#0284c7", tint: "#e0f2fe", border: "#075985" },
+      { id: "emerald", main: "#10b981", tint: "#d1fae5", border: "#065f46" },
+      { id: "indigo",  main: "#6366f1", tint: "#e0e7ff", border: "#3730a3" },
+      { id: "amber",   main: "#f59e0b", tint: "#fef3c7", border: "#92400e" },
+      { id: "lime",    main: "#84cc16", tint: "#ecfccb", border: "#3f6212" }
     ];
 
-    // Build 8x7 letter matrix from canonical paths
-    const boardLetters = Array.from({ length: ROWS }, () => Array(COLS).fill(""));
-    PUZZLE_WORDS.forEach(entry => {
-      entry.path.forEach(([r, c], idx) => {
-        boardLetters[r][c] = entry.word[idx];
-      });
-    });
-
     // Game State
-    let solvedWords = new Map(); // word -> { word, color, tint, border, path }
-    let lockedCells = new Map(); // "r,c" -> word
-    let availableColors = [...COLOR_POOL];
-    let currentActiveColor = availableColors[0];
-    let currentPath = [];        // Array of [r, c]
+    let availableColors = [...COLOR_PALETTE];
+    let activeColor = availableColors[0];
+    let currentPath = []; // Array of [r, c]
     let isDragging = false;
-    let hintCell = null;         // "r,c"
+    let solvedWords = new Map(); // word -> { path, colorObj }
+    let lockedCellMap = new Map(); // "r,c" -> { word, colorObj }
     let hintsRemaining = 3;
-    let signTimeout = null;
+    let hintCell = null; // [r, c] or null
+    let bannerTimer = null;
 
-    // DOM Elements
-    const boardWrapper = document.getElementById("board-wrapper");
+    // DOM References
+    const boardWrapperEl = document.getElementById("board-wrapper");
     const gridCellsEl = document.getElementById("grid-cells");
-    const lettersOverlayEl = document.getElementById("letters-overlay");
     const pathSvgEl = document.getElementById("path-svg");
+    const lettersOverlayEl = document.getElementById("letters-overlay");
     const slotsContainerEl = document.getElementById("word-slots-container");
     const progressCounterEl = document.getElementById("progress-counter");
     const statusSignEl = document.getElementById("status-sign");
@@ -345,87 +349,122 @@
     const victoryModalEl = document.getElementById("victory-modal");
     const victoryWordsListEl = document.getElementById("victory-words-list");
 
-    const keyOf = (r, c) => `${r},${c}`;
+    /**
+     * Helper to convert row, col into key string
+     */
+    function cellKey(r, c) {
+      return `${r},${c}`;
+    }
 
+    /**
+     * Check if two cells are orthogonally adjacent
+     */
     function isAdjacent(r1, c1, r2, c2) {
       return Math.abs(r1 - r2) + Math.abs(c1 - c2) === 1;
     }
 
     /**
-     * Render the 8x7 grid cells, obstacle borders, locked region tints, region walls,
-     * and the top-most letter overlay layer so letters always stay visible above paths.
+     * Check if a cell is a grey obstacle
+     */
+    function isObstacle(r, c) {
+      return BOARD_LAYOUT[r][c] === "#";
+    }
+
+    /**
+     * Display confirmation or feedback banner above the grid
+     */
+    function showSignBanner({ text, badge, bg, border, iconBg, iconChar }) {
+      if (bannerTimer) clearTimeout(bannerTimer);
+
+      statusSignEl.style.backgroundColor = bg;
+      statusSignEl.style.borderColor = border;
+      signIconEl.style.backgroundColor = iconBg;
+      signIconEl.textContent = iconChar;
+      signTextEl.textContent = text;
+      signBadgeEl.textContent = badge;
+      signBadgeEl.style.backgroundColor = iconBg;
+      signBadgeEl.style.color = "#ffffff";
+
+      livePreviewEl.classList.add("hidden");
+      statusSignEl.classList.remove("hidden");
+      statusSignEl.classList.remove("sign-banner");
+      void statusSignEl.offsetWidth; // trigger reflow for pop animation
+      statusSignEl.classList.add("sign-banner");
+
+      bannerTimer = setTimeout(() => {
+        statusSignEl.classList.add("hidden");
+        livePreviewEl.classList.remove("hidden");
+      }, 2600);
+    }
+
+    /**
+     * Render the 8x7 grid cells (layer 1) and top crisp letter overlay (layer 10)
      */
     function renderGrid() {
       gridCellsEl.innerHTML = "";
       lettersOverlayEl.innerHTML = "";
 
+      const tipCell = currentPath.length > 0 ? currentPath[currentPath.length - 1] : null;
+
       for (let r = 0; r < ROWS; r++) {
         for (let c = 0; c < COLS; c++) {
-          const k = keyOf(r, c);
-          const cell = document.createElement("div");
-          cell.className = "cell";
-          cell.dataset.r = r;
-          cell.dataset.c = c;
+          const val = BOARD_LAYOUT[r][c];
+          const key = cellKey(r, c);
+          const lockedInfo = lockedCellMap.get(key);
 
+          // 1. Base grid cell
+          const cellDiv = document.createElement("div");
+          cellDiv.className = "cell";
+          cellDiv.dataset.r = r;
+          cellDiv.dataset.c = c;
+
+          if (val === "#") {
+            cellDiv.classList.add("obstacle");
+            // Dark outer borders around grey obstacle blocks matching reference images
+            if (r > 0 && !isObstacle(r - 1, c)) cellDiv.style.borderTop = "2px solid #464646";
+            if (r < ROWS - 1 && !isObstacle(r + 1, c)) cellDiv.style.borderBottom = "2px solid #464646";
+            if (c > 0 && !isObstacle(r, c - 1)) cellDiv.style.borderLeft = "2px solid #464646";
+            if (c < COLS - 1 && !isObstacle(r, c + 1)) cellDiv.style.borderRight = "2px solid #464646";
+          } else if (lockedInfo) {
+            cellDiv.classList.add("locked");
+            cellDiv.style.backgroundColor = lockedInfo.colorObj.tint;
+
+            // Draw distinct region perimeter border around this locked word's territory
+            const sameTop = r > 0 && lockedCellMap.get(cellKey(r - 1, c))?.word === lockedInfo.word;
+            const sameBottom = r < ROWS - 1 && lockedCellMap.get(cellKey(r + 1, c))?.word === lockedInfo.word;
+            const sameLeft = c > 0 && lockedCellMap.get(cellKey(r, c - 1))?.word === lockedInfo.word;
+            const sameRight = c < COLS - 1 && lockedCellMap.get(cellKey(r, c + 1))?.word === lockedInfo.word;
+
+            const borderStyle = `2px solid ${lockedInfo.colorObj.border}`;
+            if (!sameTop) cellDiv.style.borderTop = borderStyle;
+            if (!sameBottom) cellDiv.style.borderBottom = borderStyle;
+            if (!sameLeft) cellDiv.style.borderLeft = borderStyle;
+            if (!sameRight) cellDiv.style.borderRight = borderStyle;
+          }
+
+          gridCellsEl.appendChild(cellDiv);
+
+          // 2. Top letter overlay slot (always above SVG path so letters never vanish)
           const letterSlot = document.createElement("div");
           letterSlot.className = "letter-slot";
 
-          const isObs = OBSTACLES.has(k);
-          const ownerWord = lockedCells.get(k);
+          if (tipCell && tipCell[0] === r && tipCell[1] === c) {
+            letterSlot.classList.add("active-tip");
+          }
 
-          if (isObs) {
-            cell.classList.add("obstacle");
-          } else {
-            const letterSpan = document.createElement("span");
-            letterSpan.className = "cell-letter text-lg sm:text-xl";
-            letterSpan.textContent = boardLetters[r][c];
-            letterSlot.appendChild(letterSpan);
-
-            if (hintCell === k && !ownerWord) {
+          if (val !== "#") {
+            if (hintCell && hintCell[0] === r && hintCell[1] === c && !lockedInfo) {
               const ring = document.createElement("div");
               ring.className = "hint-ring";
               letterSlot.appendChild(ring);
             }
+
+            const span = document.createElement("span");
+            span.className = "cell-letter";
+            span.textContent = val;
+            letterSlot.appendChild(span);
           }
 
-          // Apply locked word background tint & dark region boundary walls (matching screenshot 4)
-          if (ownerWord) {
-            const wordObj = solvedWords.get(ownerWord);
-            cell.classList.add("locked");
-            cell.style.backgroundColor = wordObj.tint;
-          }
-
-          // Region border walls between different regions (obstacles vs open vs locked words)
-          const getRegionId = (rr, cc) => {
-            if (rr < 0 || rr >= ROWS || cc < 0 || cc >= COLS) return "OUT";
-            const kk = keyOf(rr, cc);
-            if (OBSTACLES.has(kk)) return "OBS";
-            if (lockedCells.has(kk)) return "WORD:" + lockedCells.get(kk);
-            return "OPEN";
-          };
-
-          const myReg = getRegionId(r, c);
-          if (myReg !== "OPEN") {
-            const topReg = getRegionId(r - 1, c);
-            const bottomReg = getRegionId(r + 1, c);
-            const leftReg = getRegionId(r, c - 1);
-            const rightReg = getRegionId(r, c + 1);
-
-            const wallColor = ownerWord ? solvedWords.get(ownerWord).border : "#464646";
-            if (r > 0 && topReg !== myReg) cell.style.borderTop = `2.5px solid ${wallColor}`;
-            if (r < ROWS - 1 && bottomReg !== myReg) cell.style.borderBottom = `2.5px solid ${wallColor}`;
-            if (c > 0 && leftReg !== myReg) cell.style.borderLeft = `2.5px solid ${wallColor}`;
-            if (c < COLS - 1 && rightReg !== myReg) cell.style.borderRight = `2.5px solid ${wallColor}`;
-          }
-
-          if (currentPath.length > 0) {
-            const [tipR, tipC] = currentPath[currentPath.length - 1];
-            if (tipR === r && tipC === c) {
-              letterSlot.classList.add("active-tip");
-            }
-          }
-
-          gridCellsEl.appendChild(cell);
           lettersOverlayEl.appendChild(letterSlot);
         }
       }
@@ -435,285 +474,276 @@
     }
 
     /**
-     * Draw smooth colored pipe capsules, start circle rings, directional chevrons,
-     * and white/green checkmark badges on locked completed words.
+     * Render SVG rounded path capsules, start circle rings, directional chevrons,
+     * and white/green checkmark badges on locked words.
      */
     function renderPathsSVG() {
       pathSvgEl.innerHTML = "";
 
-      const allPaths = [];
+      const createSvgEl = (tag, attrs) => {
+        const el = document.createElementNS("http://www.w3.org/2000/svg", tag);
+        for (const [k, v] of Object.entries(attrs)) {
+          el.setAttribute(k, v);
+        }
+        return el;
+      };
 
-      // 1. Add all locked completed words using their persisted lock color
-      solvedWords.forEach(entry => {
-        allPaths.push({
-          path: entry.path,
-          color: entry.color,
-          locked: true
-        });
-      });
+      const drawTrail = (coords, colorObj, isLocked) => {
+        if (!coords || coords.length === 0) return;
 
-      // 2. Add active in-progress path using the current active color from the unused pool
-      if (currentPath.length > 0 && currentActiveColor) {
-        allPaths.push({
-          path: currentPath,
-          color: currentActiveColor.color,
-          locked: false
-        });
-      }
-
-      allPaths.forEach(({ path, color, locked }) => {
-        if (!path || path.length === 0) return;
-
-        const points = path.map(([r, c]) => ({
+        const points = coords.map(([r, c]) => ({
           x: c * 100 + 50,
           y: r * 100 + 50
         }));
 
-        // Draw rounded capsule stroke connecting cell centers
         if (points.length === 1) {
-          const circle = document.createElementNS("http://www.w3.org/2000/svg", "circle");
-          circle.setAttribute("cx", points[0].x);
-          circle.setAttribute("cy", points[0].y);
-          circle.setAttribute("r", "33");
-          circle.setAttribute("fill", color);
-          pathSvgEl.appendChild(circle);
+          // Single starting dot capsule
+          pathSvgEl.appendChild(
+            createSvgEl("circle", {
+              cx: points[0].x,
+              cy: points[0].y,
+              r: 33,
+              fill: colorObj.main
+            })
+          );
         } else {
+          // Continuous rounded polyline capsule
           const d = points
-            .map((pt, i) => `${i === 0 ? "M" : "L"} ${pt.x} ${pt.y}`)
+            .map((pt, idx) => `${idx === 0 ? "M" : "L"} ${pt.x} ${pt.y}`)
             .join(" ");
 
-          const polyline = document.createElementNS("http://www.w3.org/2000/svg", "path");
-          polyline.setAttribute("d", d);
-          polyline.setAttribute("fill", "none");
-          polyline.setAttribute("stroke", color);
-          polyline.setAttribute("stroke-width", "66");
-          polyline.setAttribute("stroke-linecap", "round");
-          polyline.setAttribute("stroke-linejoin", "round");
-          pathSvgEl.appendChild(polyline);
+          pathSvgEl.appendChild(
+            createSvgEl("path", {
+              d,
+              fill: "none",
+              stroke: colorObj.main,
+              "stroke-width": 66,
+              "stroke-linecap": "round",
+              "stroke-linejoin": "round"
+            })
+          );
         }
 
-        // Subtle inner white ring on the starting letter node (like LinkedIn's trail start)
-        const startRing = document.createElementNS("http://www.w3.org/2000/svg", "circle");
-        startRing.setAttribute("cx", points[0].x);
-        startRing.setAttribute("cy", points[0].y);
-        startRing.setAttribute("r", "27");
-        startRing.setAttribute("fill", "none");
-        startRing.setAttribute("stroke", "rgba(255,255,255,0.65)");
-        startRing.setAttribute("stroke-width", "3");
-        pathSvgEl.appendChild(startRing);
+        // Subtle inner ring on the starting letter (just like LinkedIn Zip/Word Path)
+        pathSvgEl.appendChild(
+          createSvgEl("circle", {
+            cx: points[0].x,
+            cy: points[0].y,
+            r: 25,
+            fill: "none",
+            stroke: "rgba(255, 255, 255, 0.78)",
+            "stroke-width": 3.5
+          })
+        );
 
-        // Directional chevron arrows between consecutive cells along the path
+        // Directional chevron arrows (`>`) between consecutive cells
         for (let i = 0; i < points.length - 1; i++) {
           const p1 = points[i];
           const p2 = points[i + 1];
-          const mx = (p1.x + p2.x) / 2;
-          const my = (p1.y + p2.y) / 2;
+          const midX = (p1.x + p2.x) / 2;
+          const midY = (p1.y + p2.y) / 2;
           const angle = (Math.atan2(p2.y - p1.y, p2.x - p1.x) * 180) / Math.PI;
 
-          const chevron = document.createElementNS("http://www.w3.org/2000/svg", "path");
-          chevron.setAttribute("d", "M -4 -6 L 4 0 L -4 6");
-          chevron.setAttribute("fill", "none");
-          chevron.setAttribute("stroke", "rgba(24, 24, 27, 0.65)");
-          chevron.setAttribute("stroke-width", "3");
-          chevron.setAttribute("stroke-linecap", "round");
-          chevron.setAttribute("stroke-linejoin", "round");
-          chevron.setAttribute("transform", `translate(${mx}, ${my}) rotate(${angle})`);
+          const chevron = createSvgEl("polyline", {
+            points: "-5,-6 4,0 -5,6",
+            fill: "none",
+            stroke: "rgba(24, 24, 27, 0.72)",
+            "stroke-width": 3.6,
+            "stroke-linecap": "round",
+            "stroke-linejoin": "round",
+            transform: `translate(${midX}, ${midY}) rotate(${angle})`
+          });
           pathSvgEl.appendChild(chevron);
         }
 
-        // Checkmark badge on locked completed words (matching screenshot 4!)
-        if (locked) {
-          const endPt = points[points.length - 1];
-          // Position badge on top-right corner of the final letter circle, clamped inside SVG
-          const bx = Math.min(678, Math.max(22, endPt.x + 24));
-          const by = Math.min(778, Math.max(22, endPt.y - 24));
+        // White/green checkmark badge on the final letter when locked
+        if (isLocked && points.length > 0) {
+          const last = points[points.length - 1];
+          const bx = last.x + 25;
+          const by = last.y - 25;
 
-          const badgeBg = document.createElementNS("http://www.w3.org/2000/svg", "circle");
-          badgeBg.setAttribute("cx", bx);
-          badgeBg.setAttribute("cy", by);
-          badgeBg.setAttribute("r", "13");
-          badgeBg.setAttribute("fill", "#ffffff");
-          badgeBg.setAttribute("stroke", color);
-          badgeBg.setAttribute("stroke-width", "2.5");
-          pathSvgEl.appendChild(badgeBg);
+          pathSvgEl.appendChild(
+            createSvgEl("circle", {
+              cx: bx,
+              cy: by,
+              r: 13,
+              fill: "#ffffff",
+              stroke: "#16a34a",
+              "stroke-width": 2.8
+            })
+          );
 
-          const check = document.createElementNS("http://www.w3.org/2000/svg", "path");
-          check.setAttribute("d", `M ${bx - 5.5} ${by + 0.5} L ${bx - 1.5} ${by + 4.5} L ${bx + 6} ${by - 4}`);
-          check.setAttribute("fill", "none");
-          check.setAttribute("stroke", "#16a34a");
-          check.setAttribute("stroke-width", "2.8");
-          check.setAttribute("stroke-linecap", "round");
-          check.setAttribute("stroke-linejoin", "round");
-          pathSvgEl.appendChild(check);
+          pathSvgEl.appendChild(
+            createSvgEl("polyline", {
+              points: `${bx - 5.5},${by + 0.5} ${bx - 1.5},${by + 4.5} ${bx + 6},${by - 4}`,
+              fill: "none",
+              stroke: "#16a34a",
+              "stroke-width": 2.8,
+              "stroke-linecap": "round",
+              "stroke-linejoin": "round"
+            })
+          );
         }
+      };
+
+      // Draw all locked words first
+      solvedWords.forEach(({ path, colorObj }) => {
+        drawTrail(path, colorObj, true);
+      });
+
+      // Draw current active selection path using the locked-in activeColor
+      if (currentPath.length > 0 && activeColor) {
+        drawTrail(currentPath, activeColor, false);
+      }
+    }
+
+    /**
+     * Update the live preview bar above the grid
+     */
+    function updateLivePreview() {
+      if (solvedWords.size === PUZZLE_WORDS.length) {
+        livePreviewEl.textContent = "✓ JOGO CONCLUÍDO COM SUCESSO! (7 / 7)";
+        livePreviewEl.className = "text-xs font-extrabold text-emerald-700 tracking-wide uppercase h-6 flex items-center";
+        return;
+      }
+      livePreviewEl.className = "text-xs font-bold text-zinc-500 tracking-widest uppercase h-6 flex items-center";
+      if (currentPath.length === 0) {
+        livePreviewEl.textContent = "Arraste ou clique nas letras adjacentes";
+      } else {
+        livePreviewEl.textContent = currentPath.map(([r, c]) => BOARD_LAYOUT[r][c]).join(" · ");
+      }
+    }
+
+    /**
+     * Render the 7-row staircase word-slots tray below the grid and update counter
+     */
+    function renderWordSlots() {
+      progressCounterEl.textContent = `${solvedWords.size} / ${PUZZLE_WORDS.length}`;
+      slotsContainerEl.innerHTML = "";
+
+      PUZZLE_WORDS.forEach(entry => {
+        const row = document.createElement("div");
+        row.className = "flex items-center gap-1";
+
+        const solvedRecord = solvedWords.get(entry.word);
+
+        for (let i = 0; i < entry.word.length; i++) {
+          const tile = document.createElement("div");
+          tile.className =
+            "w-6 h-6 sm:w-6.5 sm:h-6.5 rounded-md flex items-center justify-center text-xs font-black transition-all";
+
+          if (solvedRecord) {
+            tile.style.backgroundColor = solvedRecord.colorObj.main;
+            tile.style.color = "#18181b";
+            tile.textContent = entry.word[i];
+            tile.classList.add("slot-solved", "shadow-2xs");
+          } else {
+            tile.style.backgroundColor = "#e5e7eb";
+            tile.textContent = "";
+          }
+
+          row.appendChild(tile);
+        }
+
+        slotsContainerEl.appendChild(row);
       });
     }
 
     /**
-     * Display the confirmation sign banner above the grid
+     * Check if the current path matches any unsolved word in PUZZLE_WORDS
      */
-    function showSign(type, message, badgeText, accentColor = null) {
-      if (signTimeout) clearTimeout(signTimeout);
-
-      livePreviewEl.classList.add("hidden");
-      statusSignEl.classList.remove("hidden");
-
-      // Reset inline styles before applying theme
-      statusSignEl.style.backgroundColor = "";
-      statusSignEl.style.borderColor = "";
-      statusSignEl.style.color = "";
-      signIconEl.style.backgroundColor = "";
-      signIconEl.style.color = "";
-      signBadgeEl.style.backgroundColor = "";
-      signBadgeEl.style.color = "";
-
-      if (type === "success") {
-        statusSignEl.className =
-          "w-full px-4 py-2 rounded-xl border-2 shadow-sm flex items-center justify-between gap-2 sign-banner";
-        signIconEl.className =
-          "w-6 h-6 rounded-full flex items-center justify-center text-xs font-black shrink-0";
-        signIconEl.textContent = "✓";
-        signBadgeEl.className =
-          "text-[11px] font-extrabold uppercase px-2 py-0.5 rounded-md";
-
-        if (accentColor) {
-          statusSignEl.style.backgroundColor = accentColor.tint;
-          statusSignEl.style.borderColor = accentColor.color;
-          statusSignEl.style.color = "#18181b";
-          signIconEl.style.backgroundColor = accentColor.color;
-          signIconEl.style.color = "#ffffff";
-          signBadgeEl.style.backgroundColor = accentColor.color;
-          signBadgeEl.style.color = "#ffffff";
-        } else {
-          statusSignEl.classList.add("bg-emerald-50", "border-emerald-500", "text-emerald-950");
-          signIconEl.classList.add("bg-emerald-600", "text-white");
-          signBadgeEl.classList.add("bg-emerald-600", "text-white");
-        }
-      } else if (type === "locked") {
-        statusSignEl.className =
-          "w-full px-4 py-2 rounded-xl border border-amber-400 bg-amber-50 text-amber-950 shadow-sm flex items-center justify-between gap-2 sign-banner";
-        signIconEl.className =
-          "w-6 h-6 rounded-full bg-amber-500 text-white flex items-center justify-center text-xs font-black shrink-0";
-        signIconEl.textContent = "🔒";
-        signBadgeEl.className =
-          "text-[11px] font-extrabold uppercase px-2 py-0.5 rounded-md bg-amber-200 text-amber-900";
-      } else {
-        statusSignEl.className =
-          "w-full px-4 py-2 rounded-xl border border-rose-300 bg-rose-50 text-rose-950 shadow-sm flex items-center justify-between gap-2 sign-banner";
-        signIconEl.className =
-          "w-6 h-6 rounded-full bg-rose-500 text-white flex items-center justify-center text-xs font-black shrink-0";
-        signIconEl.textContent = "!";
-        signBadgeEl.className =
-          "text-[11px] font-extrabold uppercase px-2 py-0.5 rounded-md bg-rose-200 text-rose-900";
-      }
-
-      signTextEl.textContent = message;
-      signBadgeEl.textContent = badgeText;
-
-      signTimeout = setTimeout(() => {
-        statusSignEl.classList.add("hidden");
-        livePreviewEl.classList.remove("hidden");
-      }, 2600);
-    }
-
-    /**
-     * Validate whether the current path matches an unsolved target word
-     */
-    function checkCurrentPath() {
+    function evaluateCurrentPath() {
       if (currentPath.length < 2) return false;
 
-      const formedWord = currentPath.map(([r, c]) => boardLetters[r][c]).join("");
-      const matchedTarget = PUZZLE_WORDS.find(
-        w => w.word === formedWord && !solvedWords.has(w.word)
+      const formedStr = currentPath.map(([r, c]) => BOARD_LAYOUT[r][c]).join("");
+      const matchedEntry = PUZZLE_WORDS.find(
+        entry => !solvedWords.has(entry.word) && entry.word === formedStr
       );
 
-      if (matchedTarget) {
-        // Persist the exact active color used while dragging/selecting this word
-        const lockedColorObj = currentActiveColor || availableColors[0];
+      if (!matchedEntry) return false;
 
-        const solvedRecord = {
-          word: matchedTarget.word,
-          color: lockedColorObj.color,
-          tint: lockedColorObj.tint,
-          border: lockedColorObj.border,
-          path: currentPath.map(([r, c]) => [r, c])
-        };
+      // Preserve the exact activeColor that started this trace
+      const lockedColorObj = activeColor;
 
-        solvedWords.set(matchedTarget.word, solvedRecord);
-        solvedRecord.path.forEach(([r, c]) => {
-          lockedCells.set(keyOf(r, c), matchedTarget.word);
+      // Lock the word and all its cells on the board
+      solvedWords.set(matchedEntry.word, {
+        path: [...currentPath],
+        colorObj: lockedColorObj
+      });
+
+      currentPath.forEach(([r, c]) => {
+        lockedCellMap.set(cellKey(r, c), {
+          word: matchedEntry.word,
+          colorObj: lockedColorObj
         });
+      });
 
-        // Remove this locked color permanently from the available pool for this round
-        availableColors = availableColors.filter(c => c.id !== lockedColorObj.id);
-        currentActiveColor = availableColors.length > 0 ? availableColors[0] : null;
+      // Remove this color from the available pool so it never appears again
+      availableColors = availableColors.filter(c => c.id !== lockedColorObj.id);
+      activeColor = availableColors.length > 0 ? availableColors[0] : null;
 
-        if (hintCell && lockedCells.has(hintCell)) {
+      // Clear hint if it pointed to this word
+      if (hintCell) {
+        const [hr, hc] = hintCell;
+        if (lockedCellMap.has(cellKey(hr, hc))) {
           hintCell = null;
         }
-
-        currentPath = [];
-        isDragging = false;
-
-        renderGrid();
-        renderWordSlots();
-
-        showSign(
-          "success",
-          `Palavra correta: ${matchedTarget.word}!`,
-          "BLOQUEADA",
-          lockedColorObj
-        );
-
-        if (solvedWords.size === PUZZLE_WORDS.length) {
-          setTimeout(openVictoryModal, 650);
-        }
-        return true;
       }
 
-      return false;
+      // Reset active trace and stop dragging
+      currentPath = [];
+      isDragging = false;
+
+      // Show confirmation sign banner in the exact locked color
+      showSignBanner({
+        text: `Palavra correta: ${matchedEntry.word}`,
+        badge: "Bloqueada",
+        bg: lockedColorObj.tint,
+        border: lockedColorObj.border,
+        iconBg: lockedColorObj.main,
+        iconChar: "✓"
+      });
+
+      renderGrid();
+      renderWordSlots();
+
+      // If all 7 words are solved, open the celebratory completion modal
+      if (solvedWords.size === PUZZLE_WORDS.length) {
+        setTimeout(() => {
+          openVictoryModal();
+        }, 550);
+      }
+
+      return true;
     }
 
     /**
-     * Handle adding/backtracking a cell in the active path
+     * Handle interacting with a cell (pointer down, pointer move, or tap)
      */
-    function stepIntoCell(r, c, isClickTap = false) {
+    function handleCellStep(r, c, isStartAction) {
       if (r < 0 || r >= ROWS || c < 0 || c >= COLS) return;
-      const k = keyOf(r, c);
+      if (isObstacle(r, c)) return;
+      if (lockedCellMap.has(cellKey(r, c))) return;
 
-      if (OBSTACLES.has(k)) return;
-
-      // Prevent drawing across already-completed & locked words
-      if (lockedCells.has(k)) {
-        if (isClickTap && currentPath.length === 0) {
-          const w = lockedCells.get(k);
-          showSign("locked", `A palavra "${w}" já está correta e bloqueada!`, "BLOQUEADA");
-        }
-        return;
-      }
-
-      // If starting a fresh path
+      // Starting a brand new trace if empty
       if (currentPath.length === 0) {
+        if (availableColors.length === 0) return;
+        // Lock in the starting color for this entire trace
+        activeColor = availableColors[0];
         currentPath = [[r, c]];
         renderGrid();
         return;
       }
 
-      const lastIdx = currentPath.length - 1;
-      const [lastR, lastC] = currentPath[lastIdx];
+      const lastIndex = currentPath.length - 1;
+      const [lastR, lastC] = currentPath[lastIndex];
 
-      // Clicking the tip again clears a single-letter selection
-      if (lastR === r && lastC === c) {
-        if (isClickTap && currentPath.length === 1) {
-          currentPath = [];
-          renderGrid();
-        }
-        return;
-      }
+      // Already on the tip cell
+      if (lastR === r && lastC === c) return;
 
-      // Backtrack if stepping back onto the immediately preceding cell
+      // Backtrack if moving onto the immediately preceding cell
       if (currentPath.length >= 2) {
-        const [prevR, prevC] = currentPath[lastIdx - 1];
+        const [prevR, prevC] = currentPath[lastIndex - 1];
         if (prevR === r && prevC === c) {
           currentPath.pop();
           renderGrid();
@@ -721,176 +751,164 @@
         }
       }
 
-      // Ignore if cell is already earlier in the current path
-      if (currentPath.some(([pr, pc]) => pr === r && pc === c)) {
-        return;
-      }
+      // Check if cell is already in currentPath (prevent self-intersection)
+      const alreadyInPath = currentPath.some(([pr, pc]) => pr === r && pc === c);
 
-      // Must be orthogonally adjacent to the current tip
-      if (isAdjacent(lastR, lastC, r, c)) {
+      if (isAdjacent(lastR, lastC, r, c) && !alreadyInPath) {
         currentPath.push([r, c]);
-        if (!checkCurrentPath()) {
+        const solved = evaluateCurrentPath();
+        if (!solved) {
           renderGrid();
         }
-      } else if (isClickTap) {
-        // Clicking a non-adjacent unlocked cell starts a new path there
+      } else if (isStartAction) {
+        // Tapping a non-adjacent unlocked letter restarts the trace there with the SAME activeColor
         currentPath = [[r, c]];
         renderGrid();
       }
     }
 
     /**
-     * Convert pointer clientX/clientY to grid [row, col]
+     * Convert pointer clientX/clientY into grid coordinates [r, c]
      */
     function getCellFromPointer(clientX, clientY) {
-      const rect = gridCellsEl.getBoundingClientRect();
-      const x = clientX - rect.left;
-      const y = clientY - rect.top;
-      if (x < 0 || y < 0 || x >= rect.width || y >= rect.height) return null;
+      const rect = boardWrapperEl.getBoundingClientRect();
+      const relX = clientX - rect.left;
+      const relY = clientY - rect.top;
 
-      const c = Math.floor((x / rect.width) * COLS);
-      const r = Math.floor((y / rect.height) * ROWS);
-      return [r, c];
-    }
-
-    // Pointer Events (unified Mouse + Touch)
-    let pointerDownCell = null;
-    let movedDuringDrag = false;
-
-    boardWrapper.addEventListener("pointerdown", e => {
-      e.preventDefault();
-      const cellCoords = getCellFromPointer(e.clientX, e.clientY);
-      if (!cellCoords) return;
-
-      const [r, c] = cellCoords;
-      const k = keyOf(r, c);
-
-      if (lockedCells.has(k)) {
-        const w = lockedCells.get(k);
-        showSign("locked", `A palavra "${w}" já está correta e bloqueada!`, "BLOQUEADA");
-        return;
+      if (relX < 0 || relY < 0 || relX > rect.width || relY > rect.height) {
+        return null;
       }
 
-      if (OBSTACLES.has(k)) return;
+      const c = Math.floor((relX / rect.width) * COLS);
+      const r = Math.floor((relY / rect.height) * ROWS);
+
+      // Slight inner-cell deadzone during dragging so diagonal corner grazes don't misfire
+      const cellW = rect.width / COLS;
+      const cellH = rect.height / ROWS;
+      const localX = (relX % cellW) / cellW;
+      const localY = (relY % cellH) / cellH;
+      const distFromCenter = Math.hypot(localX - 0.5, localY - 0.5);
+
+      return { r, c, distFromCenter };
+    }
+
+    // Unified Pointer Events for Mouse & Touch
+    boardWrapperEl.addEventListener("pointerdown", e => {
+      if (e.button !== undefined && e.button !== 0) return;
+      const hit = getCellFromPointer(e.clientX, e.clientY);
+      if (!hit) return;
 
       isDragging = true;
-      movedDuringDrag = false;
-      pointerDownCell = keyOf(r, c);
-
-      // If user already started a click-by-click path and taps an adjacent cell, continue it;
-      // otherwise start a new drag from this cell
-      if (currentPath.length > 0) {
-        const [tipR, tipC] = currentPath[currentPath.length - 1];
-        const isPrev =
-          currentPath.length >= 2 &&
-          currentPath[currentPath.length - 2][0] === r &&
-          currentPath[currentPath.length - 2][1] === c;
-
-        if (isAdjacent(tipR, tipC, r, c) || isPrev || (tipR === r && tipC === c)) {
-          stepIntoCell(r, c, true);
-          return;
-        }
-      }
-
-      currentPath = [[r, c]];
-      renderGrid();
+      boardWrapperEl.setPointerCapture(e.pointerId);
+      handleCellStep(hit.r, hit.c, true);
     });
 
-    window.addEventListener("pointermove", e => {
+    boardWrapperEl.addEventListener("pointermove", e => {
       if (!isDragging) return;
-      const cellCoords = getCellFromPointer(e.clientX, e.clientY);
-      if (!cellCoords) return;
+      const hit = getCellFromPointer(e.clientX, e.clientY);
+      if (!hit) return;
 
-      const [r, c] = cellCoords;
-      if (keyOf(r, c) !== pointerDownCell) {
-        movedDuringDrag = true;
+      // Require pointer to be reasonably close to cell center while dragging
+      if (hit.distFromCenter <= 0.46) {
+        handleCellStep(hit.r, hit.c, false);
       }
-      stepIntoCell(r, c, false);
     });
 
-    window.addEventListener("pointerup", () => {
-      if (!isDragging) return;
+    const stopDragging = () => {
       isDragging = false;
+    };
 
-      // If user dragged across multiple cells and released on an incomplete/wrong word
-      if (movedDuringDrag && currentPath.length >= 2) {
-        const formed = currentPath.map(([r, c]) => boardLetters[r][c]).join("");
-        const alreadySolved = solvedWords.has(formed);
-        if (!alreadySolved) {
-          showSign("error", `"${formed}" não é uma das palavras alvo`, "INVÁLIDA");
-        }
-      }
-    });
+    boardWrapperEl.addEventListener("pointerup", stopDragging);
+    boardWrapperEl.addEventListener("pointercancel", stopDragging);
 
-    // Buttons
-    document.getElementById("btn-clear").addEventListener("click", () => {
+    /**
+     * Clear current trace while keeping the same starting color ready
+     */
+    function clearCurrentTrace() {
+      if (currentPath.length === 0) return;
       currentPath = [];
-      if (availableColors.length > 0) {
-        currentActiveColor = availableColors[0];
-      }
       renderGrid();
-    });
-
-    document.getElementById("btn-hint").addEventListener("click", () => {
-      if (hintsRemaining <= 0) {
-        showSign("error", "Você já usou todas as dicas disponíveis.", "SEM DICAS");
-        return;
-      }
-
-      const nextUnsolved = PUZZLE_WORDS.find(w => !solvedWords.has(w.word));
-      if (!nextUnsolved) return;
-
-      const [startR, startC] = nextUnsolved.path[0];
-      hintCell = keyOf(startR, startC);
-      hintsRemaining--;
-      hintCountEl.textContent = hintsRemaining;
-
-      if (!currentActiveColor && availableColors.length > 0) {
-        currentActiveColor = availableColors[0];
-      }
-      currentPath = [[startR, startC]];
-      renderGrid();
-      showSign(
-        "locked",
-        `Dica: "${nextUnsolved.word}" (${nextUnsolved.word.length} letras) começa no destaque!`,
-        "DICA"
-      );
-    });
-
-    function resetGame() {
-      solvedWords.clear();
-      lockedCells.clear();
-      availableColors = [...COLOR_POOL];
-      currentActiveColor = availableColors[0];
-      currentPath = [];
-      isDragging = false;
-      hintCell = null;
-      hintsRemaining = 3;
-      hintCountEl.textContent = hintsRemaining;
-      statusSignEl.classList.add("hidden");
-      livePreviewEl.classList.remove("hidden");
-      victoryModalEl.classList.add("hidden");
-      renderGrid();
-      renderWordSlots();
     }
 
-    document.getElementById("btn-reset").addEventListener("click", resetGame);
-    document.getElementById("btn-play-again").addEventListener("click", resetGame);
+    /**
+     * Highlight the starting letter of an unsolved word
+     */
+    function useHint() {
+      if (hintsRemaining <= 0 || solvedWords.size === PUZZLE_WORDS.length) return;
 
+      const unsolved = PUZZLE_WORDS.find(entry => !solvedWords.has(entry.word));
+      if (!unsolved) return;
+
+      hintsRemaining--;
+      hintCountEl.textContent = hintsRemaining;
+      hintCell = unsolved.path[0];
+      currentPath = [hintCell];
+
+      if (!activeColor && availableColors.length > 0) {
+        activeColor = availableColors[0];
+      }
+
+      showSignBanner({
+        text: `Dica: comece na letra "${BOARD_LAYOUT[hintCell[0]][hintCell[1]]}" (${unsolved.word.length} letras)`,
+        badge: "Dica",
+        bg: "#fef3c7",
+        border: "#d97706",
+        iconBg: "#f59e0b",
+        iconChar: "?"
+      });
+
+      renderGrid();
+    }
+
+    /**
+     * Open celebratory victory modal showing all 7 keywords in their locked colors
+     */
     function openVictoryModal() {
       victoryWordsListEl.innerHTML = "";
       PUZZLE_WORDS.forEach(entry => {
         const solvedRecord = solvedWords.get(entry.word);
         const pill = document.createElement("span");
         pill.className = "px-2.5 py-1 rounded-lg text-xs font-black text-zinc-900 shadow-2xs";
-        pill.style.backgroundColor = solvedRecord ? solvedRecord.color : "#e5e7eb";
+        pill.style.backgroundColor = solvedRecord ? solvedRecord.colorObj.main : "#e5e7eb";
         pill.textContent = `✓ ${entry.word}`;
         victoryWordsListEl.appendChild(pill);
       });
       victoryModalEl.classList.remove("hidden");
     }
 
-    // Initialize board on load
+    /**
+     * Reset the entire puzzle and restore all 7 colors to the pool
+     */
+    function resetGame() {
+      availableColors = [...COLOR_PALETTE];
+      activeColor = availableColors[0];
+      currentPath = [];
+      isDragging = false;
+      solvedWords.clear();
+      lockedCellMap.clear();
+      hintsRemaining = 3;
+      hintCountEl.textContent = hintsRemaining;
+      hintCell = null;
+
+      if (bannerTimer) clearTimeout(bannerTimer);
+      statusSignEl.classList.add("hidden");
+      livePreviewEl.classList.remove("hidden");
+      victoryModalEl.classList.add("hidden");
+
+      renderGrid();
+      renderWordSlots();
+    }
+
+    // Button Event Listeners
+    document.getElementById("btn-clear").addEventListener("click", clearCurrentTrace);
+    document.getElementById("btn-hint").addEventListener("click", useHint);
+    document.getElementById("btn-reset").addEventListener("click", resetGame);
+    document.getElementById("btn-play-again").addEventListener("click", resetGame);
+    document.getElementById("btn-view-board").addEventListener("click", () => {
+      victoryModalEl.classList.add("hidden");
+    });
+
+    // Render immediately on load
     renderGrid();
     renderWordSlots();
   </script>
